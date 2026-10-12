@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>D500 · Радар комнаты</title>
+<style>
+  :root{
+    --bg:#070b0f; --panel:#0d141b; --panel2:#111c25; --line:#1b2a33;
+    --ink:#dbe7ee; --dim:#5f7480; --cyan:#22d3ee; --green:#34d399;
+    --amber:#f59e0b; --red:#ef4444; --violet:#a78bfa;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+    --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);overflow:hidden;-webkit-user-select:none;user-select:none}
+  #app{display:grid;grid-template-columns:1fr 320px;height:100%}
+  @media(max-width:820px){#app{grid-template-columns:1fr}}
+  /* ---- canvas stage ---- */
+  #stage{position:relative;overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+  #topbar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;
+    gap:14px;padding:10px 16px;z-index:5;
+    background:linear-gradient(#070b0fcc,#070b0f00);pointer-events:none}
+  #topbar .brand{font-weight:700;letter-spacing:.5px;font-size:15px}
+  #topbar .brand b{color:var(--cyan)}
+  .pill{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:999px;
+    background:var(--panel2);border:1px solid var(--line);color:var(--dim)}
+  .pill.ok{color:var(--green);border-color:#1c4a3a}
+  .pill.warn{color:var(--amber);border-color:#5c3b10}
+  .pill.bad{color:var(--red);border-color:#4a1c1c}
+  .bigcount{margin-left:auto;text-align:right;pointer-events:none}
+  .bigcount .n{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1;color:var(--green)}
+  .bigcount .l{font-size:10px;letter-spacing:2px;color:var(--dim);text-transform:uppercase}
+  #alertbanner{position:absolute;top:56px;left:50%;transform:translateX(-50%);
+    z-index:6;background:#2a0d0d;border:1px solid var(--red);color:#ffb4b4;
+    font-family:var(--mono);font-size:13px;padding:7px 16px;border-radius:8px;
+    display:none;box-shadow:0 0 24px #ef444455}
+  #hint{position:absolute;bottom:12px;left:16px;z-index:5;font-family:var(--mono);
+    font-size:11px;color:var(--dim);pointer-events:none}
+  /* ---- sidebar ---- */
+  #side{background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0}
+  @media(max-width:820px){#side{position:absolute;right:0;top:0;bottom:0;width:300px;
+    transform:translateX(100%);transition:.25s;z-index:20;box-shadow:-8px 0 40px #000a}
+    #side.open{transform:none}}
+  .sec{padding:12px 14px;border-bottom:1px solid var(--line)}
+  .sec h3{margin:0 0 9px;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--dim)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .stat .v{font-family:var(--mono);font-size:18px;font-weight:600}
+  .stat .k{font-size:10px;color:var(--dim);letter-spacing:.5px}
+  .stat .v.cy{color:var(--cyan)} .stat .v.gr{color:var(--green)} .stat .v.am{color:var(--amber)}
+  .toggles{display:flex;flex-wrap:wrap;gap:6px}
+  .tg{font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:7px;cursor:pointer;
+    background:var(--panel2);border:1px solid var(--line);color:var(--dim)}
+  .tg.on{color:var(--bg);background:var(--cyan);border-color:var(--cyan);font-weight:600}
+  .btn{font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:7px;cursor:pointer;
+    background:var(--panel2);border:1px solid var(--line);color:var(--ink);flex:1;text-align:center}
+  .btn:hover{border-color:var(--cyan)}
+  .btn.red{color:#ffb4b4;border-color:#4a1c1c}
+  .row{display:flex;gap:6px}
+  #objlist{flex:1;overflow:auto;min-height:60px}
+  .obj{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;margin-bottom:5px;
+    background:var(--panel2);border:1px solid var(--line);font-family:var(--mono);font-size:11px}
+  .obj .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .obj .id{color:var(--dim)} .obj .meta{margin-left:auto;color:var(--dim);text-align:right;font-size:10px}
+  .obj b{color:var(--ink);font-weight:600}
+  #fab{position:absolute;bottom:14px;right:14px;z-index:20;display:none;
+    width:46px;height:46px;border-radius:50%;background:var(--cyan);color:var(--bg);
+    border:none;font-size:20px;font-weight:700;cursor:pointer;box-shadow:0 4px 20px #000a}
+  @media(max-width:820px){#fab{display:block}}
+  .muted{color:var(--dim);font-size:11px;font-family:var(--mono)}
+  #tooltip{position:fixed;z-index:1000;max-width:280px;padding:8px 10px;border-radius:7px;
+    background:#071018f2;border:1px solid #244250;color:var(--ink);font-size:12px;line-height:1.35;
+    box-shadow:0 10px 30px #000b;pointer-events:none;opacity:0;transform:translateY(4px);
+    transition:opacity .12s ease,transform .12s ease}
+  #tooltip.show{opacity:1;transform:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="cv" data-tip="Карта сверху: колесо мыши меняет масштаб, перетаскивание двигает карту, двойной щелчок центрирует вид."></canvas>
+    <div id="topbar">
+      <div class="brand" data-tip="LDROBOT D500: 2D-лидар, который строит план помещения и отслеживает движение."><b>D500</b> · РАДАР КОМНАТЫ</div>
+      <div id="conn" class="pill bad" data-tip="Состояние WebSocket-подключения браузера к серверу. Если офлайн, данные с лидара не приходят в интерфейс.">нет связи</div>
+      <div id="lidarstat" class="pill bad" data-tip="Состояние самого лидара: сервер автоматически ищет USB-порт, переоткрывает его после отключения и ждёт новые пакеты.">лидар: поиск</div>
+      <div id="bgstat" class="pill" data-tip="Фон комнаты: пока он обучается, лучше не стоять в луче. После фиксации фон используется для поиска людей и объектов.">фон: обучение…</div>
+      <div class="bigcount" data-tip="Количество подтверждённых людей, найденных алгоритмом прямо сейчас."><div class="n" id="peopleN">0</div><div class="l">людей</div></div>
+    </div>
+    <div id="alertbanner">ТРЕВОГА: вход в зону</div>
+    <div id="hint">колесо = масштаб · перетаскивание = сдвиг · двойной щелчок = центр</div>
+  </div>
+
+  <div id="side">
+    <div class="sec">
+      <h3>Комната</h3>
+      <div class="grid2">
+        <div class="stat" data-tip="Оценка ширины и длины комнаты по выученному фону. Это срез на высоте луча лидара."><div class="v cy" id="rw">–</div><div class="k">ширина × длина, м</div></div>
+        <div class="stat" data-tip="Площадь контура, рассчитанная по точкам фона. Значение примерное: мебель и открытые проходы влияют на форму."><div class="v cy" id="rarea">–</div><div class="k">площадь, м²</div></div>
+        <div class="stat" data-tip="Скорость вращения лидара. Для D500 нормальное значение около 595-600 об/мин."><div class="v" id="rpm">–</div><div class="k">вращение, об/мин</div></div>
+        <div class="stat" data-tip="Сколько сырых точек в секунду получает интерфейс после фильтрации слабых и слишком близких возвратов."><div class="v" id="pps">–</div><div class="k">сырых точек/с</div></div>
+      </div>
+    </div>
+    <div class="sec">
+      <h3>Слои</h3>
+      <div class="toggles" id="toggles"></div>
+    </div>
+    <div class="sec">
+      <h3>Зоны и тревога</h3>
+      <div class="row" style="margin-bottom:6px">
+        <button class="btn" id="addzone" data-tip="Включает режим рисования охранной зоны. После нажатия протяните прямоугольник на радаре.">+ зона</button>
+        <button class="btn red" id="clrzone" data-tip="Удаляет все нарисованные охранные зоны.">очистить</button>
+        <button class="btn" id="sound" data-tip="Включает или выключает звуковой сигнал, когда объект попадает в охранную зону.">звук</button>
+      </div>
+      <div class="muted" id="zoneinfo">зон нет — нажмите «+ зона» и протяните прямоугольник на радаре</div>
+    </div>
+    <div class="sec">
+      <div class="row">
+        <button class="btn" id="resetbg" data-tip="Заново обучает фон комнаты и сбрасывает треки. Перед нажатием лучше убрать людей из луча на 3-5 секунд.">сброс фона</button>
+        <button class="btn" id="fit" data-tip="Подбирает масштаб и положение карты так, чтобы выученная комната поместилась на экране.">вписать</button>
+        <button class="btn" id="export" data-tip="Сохраняет текущий вид карты в PNG-файл.">PNG</button>
+      </div>
+    </div>
+    <div class="sec" style="flex:1;display:flex;flex-direction:column;min-height:0">
+      <h3>Отслеживание (<span id="objN">0</span>)</h3>
+      <div class="muted" id="debugstat" style="margin-bottom:6px" data-tip="Диагностика алгоритма: движение — точки ближе фона, кластеры — сгруппированные кандидаты до фильтрации.">движение 0 · кластеров 0</div>
+      <div id="objlist"><div class="muted">движения нет…</div></div>
+    </div>
+  </div>
+</div>
+<button id="fab" data-tip="Открывает или скрывает боковую панель на телефоне.">☰</button>
+<div id="tooltip"></div>
+
+<script>
+const $=s=>document.querySelector(s), cv=$("#cv"), ctx=cv.getContext("2d");
+const WSPORT=8081;
+let DPR=Math.min(devicePixelRatio||1,2);
+
+// ---------- delayed tooltips ----------
+const tip=$("#tooltip");
+let tipTimer=null, tipTarget=null, tipEvent=null;
+function hideTip(){
+  clearTimeout(tipTimer); tipTimer=null; tipTarget=null;
+  tip.classList.remove("show");
+}
+function placeTip(e){
+  const pad=14;
+  const r=tip.getBoundingClientRect();
+  let x=e.clientX+pad, y=e.clientY+pad;
+  if(x+r.width>innerWidth-8) x=e.clientX-r.width-pad;
+  if(y+r.height>innerHeight-8) y=e.clientY-r.height-pad;
+  tip.style.left=Math.max(8,x)+"px";
+  tip.style.top=Math.max(8,y)+"px";
+}
+document.addEventListener("pointerenter",e=>{
+  const el=e.target.closest?.("[data-tip]");
+  if(!el) return;
+  hideTip();
+  tipTarget=el; tipEvent=e;
+  tipTimer=setTimeout(()=>{
+    if(!tipTarget) return;
+    tip.textContent=tipTarget.dataset.tip;
+    tip.classList.add("show");
+    placeTip(tipEvent);
+  },3000);
+},true);
+document.addEventListener("pointermove",e=>{
+  if(tipTarget) tipEvent=e;
+  if(tip.classList.contains("show")) placeTip(e);
+},true);
+document.addEventListener("pointerleave",e=>{
+  if(tipTarget && (e.target===tipTarget || !tipTarget.contains(e.relatedTarget))) hideTip();
+},true);
+document.addEventListener("pointerdown",hideTip,true);
+
+// ---------- view state ----------
+const view={scale:60, ox:0, oy:0, inited:false};
+function resize(){
+  const r=cv.parentElement.getBoundingClientRect();
+  cv.width=r.width*DPR; cv.height=r.height*DPR;
+  if(!view.inited){view.ox=cv.width/2; view.oy=cv.height/2; view.inited=true;}
+}
+addEventListener("resize",resize);
+const W2S=(x,y)=>[view.ox + x*view.scale*DPR, view.oy - y*view.scale*DPR];
+const S2W=(sx,sy)=>[(sx*DPR-view.ox)/(view.scale*DPR), (view.oy-sy*DPR)/(view.scale*DPR)];
+
+// ---------- layers ----------
+const L={points:true,walls:true,trails:true,heatmap:false,grid:true,sweep:true,fg:true};
+const tgWrap=$("#toggles");
+const LNAMES={points:"точки",walls:"стены",fg:"движение",trails:"следы",heatmap:"теплокарта",grid:"сетка",sweep:"луч"};
+const LTIPS={
+  points:"Сырые точки лидара. Цвет зависит от силы отражения.",
+  walls:"Контур комнаты и мебели, выученный как неподвижный фон.",
+  fg:"Точки, которые сейчас ближе выученного фона: кандидаты на людей или объекты.",
+  trails:"Следы подтверждённых треков за последние кадры.",
+  heatmap:"Накопленная карта мест, где появлялись люди.",
+  grid:"Круги расстояния и оси координат на карте.",
+  sweep:"Визуальный вращающийся луч лидара."
+};
+for(const k in LNAMES){
+  const b=document.createElement("div"); b.className="tg"+(L[k]?" on":""); b.textContent=LNAMES[k];
+  b.dataset.tip=LTIPS[k];
+  b.onclick=()=>{L[k]=!L[k]; b.classList.toggle("on",L[k]);}; tgWrap.appendChild(b);
+}
+
+// ---------- data ----------
+let data={pts:[],wall:[],fg:[],objects:[],room:null,rpm:0,frames:0,n_people:0,bg_ready:false,lidar:null};
+let lastFrames=0,lastT=performance.now(),pps=0;
+
+// ---------- websocket ----------
+let ws;
+function connect(){
+  ws=new WebSocket(`ws://${location.hostname}:${WSPORT}`);
+  ws.onopen =()=>{$("#conn").className="pill ok";$("#conn").textContent="связь есть";};
+  ws.onclose=()=>{$("#conn").className="pill bad";$("#conn").textContent="нет связи";setTimeout(connect,1000);};
+  ws.onmessage=e=>{ data=JSON.parse(e.data);
+    if(data.room && !view.userMoved) fitTo(data.room);
+  };
+}
+connect();
+function send(o){ try{ws.send(JSON.stringify(o));}catch(e){} }
+
+function updateLidarStatus(){
+  const s=data.lidar||{};
+  const el=$("#lidarstat");
+  if(s.connected){
+    el.className="pill ok";
+    el.textContent=`лидар: ${s.port||"подключён"}`;
+  }else if(s.state==="waiting"){
+    el.className="pill warn";
+    el.textContent=`лидар: ${s.port||"ждём"}`;
+  }else{
+    el.className="pill bad";
+    el.textContent="лидар: поиск";
+  }
+  const parts=[];
+  if(s.port) parts.push(`порт ${s.port}`);
+  if(s.rpm) parts.push(`${s.rpm.toFixed ? s.rpm.toFixed(0) : s.rpm} об/мин`);
+  if(s.reconnects) parts.push(`переподключений ${s.reconnects}`);
+  if(s.last_packet_age_s!==null && s.last_packet_age_s!==undefined) parts.push(`последний пакет ${s.last_packet_age_s} с назад`);
+  if(s.last_error) parts.push(s.last_error);
+  el.dataset.tip=parts.length?parts.join(" · "):"Сервер ищет USB-лидар и сам подключится, когда устройство появится.";
+}
+
+// ---------- heatmap ----------
+const heat=new Map(); const HCELL=0.18;
+function heatAdd(x,y){const k=Math.round(x/HCELL)+","+Math.round(y/HCELL); heat.set(k,(heat.get(k)||0)+1);}
+function heatDecay(){for(const[k,v]of heat){const nv=v*0.985; if(nv<0.05)heat.delete(k); else heat.set(k,nv);}}
+
+// ---------- zones ----------
+const zones=[]; let drawing=false, zStart=null, zCur=null, addMode=false;
+$("#addzone").onclick=()=>{addMode=!addMode; $("#addzone").classList.toggle("on",addMode);
+  $("#addzone").textContent=addMode?"рисуйте на радаре":"+ зона";};
+$("#clrzone").onclick=()=>{zones.length=0; updZoneInfo();};
+function updZoneInfo(){$("#zoneinfo").textContent = zones.length? `зон активно: ${zones.length}`:
+  "зон нет — нажмите «+ зона» и протяните прямоугольник на радаре";}
+function zoneHit(z){ return data.objects.some(o=>o.x>=z.x0&&o.x<=z.x1&&o.y>=z.y0&&o.y<=z.y1); }
+
+// ---------- sound ----------
+let sound=false, actx=null, lastBeep=0;
+$("#sound").onclick=()=>{sound=!sound; $("#sound").classList.toggle("on",sound);
+  if(sound&&!actx)actx=new (window.AudioContext||window.webkitAudioContext)();};
+function beep(){ if(!sound||!actx)return; const t=performance.now(); if(t-lastBeep<600)return; lastBeep=t;
+  const o=actx.createOscillator(),g=actx.createGain(); o.type="square"; o.frequency.value=880;
+  o.connect(g); g.connect(actx.destination); g.gain.setValueAtTime(.0001,actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.25,actx.currentTime+.01);
+  g.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+.25); o.start(); o.stop(actx.currentTime+.26);}
+
+// ---------- interaction ----------
+let dragging=false,px,py;
+cv.addEventListener("pointerdown",e=>{
+  if(addMode){drawing=true; zStart=S2W(e.offsetX,e.offsetY); zCur=zStart;}
+  else{dragging=true; px=e.offsetX; py=e.offsetY;} cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener("pointermove",e=>{
+  if(drawing){zCur=S2W(e.offsetX,e.offsetY);}
+  else if(dragging){view.ox+=(e.offsetX-px)*DPR; view.oy+=(e.offsetY-py)*DPR; px=e.offsetX;py=e.offsetY; view.userMoved=true;}
+});
+cv.addEventListener("pointerup",e=>{
+  if(drawing){drawing=false; const a=zStart,b=zCur;
+    const z={x0:Math.min(a[0],b[0]),x1:Math.max(a[0],b[0]),y0:Math.min(a[1],b[1]),y1:Math.max(a[1],b[1])};
+    if(Math.abs(z.x1-z.x0)>0.1&&Math.abs(z.y1-z.y0)>0.1){zones.push(z); updZoneInfo();}
+    addMode=false; $("#addzone").classList.remove("on"); $("#addzone").textContent="+ зона";}
+  dragging=false;
+});
+cv.addEventListener("wheel",e=>{e.preventDefault();
+  const [wx,wy]=S2W(e.offsetX,e.offsetY); const f=e.deltaY<0?1.12:0.893;
+  view.scale=Math.max(8,Math.min(400,view.scale*f));
+  const [nx,ny]=W2S(wx,wy); view.ox+=(e.offsetX*DPR-nx); view.oy+=(e.offsetY*DPR-ny); view.userMoved=true;
+},{passive:false});
+cv.addEventListener("dblclick",()=>{view.userMoved=false; if(data.room)fitTo(data.room);});
+function fitTo(r){ const w=Math.max(1,r.maxx-r.minx), h=Math.max(1,r.maxy-r.miny);
+  const s=Math.min(cv.width/(w*DPR), cv.height/(h*DPR))*0.82;
+  view.scale=Math.max(8,Math.min(200,s));
+  view.ox=cv.width/2 - ((r.minx+r.maxx)/2)*view.scale*DPR;
+  view.oy=cv.height/2 + ((r.miny+r.maxy)/2)*view.scale*DPR; }
+$("#fit").onclick=()=>{view.userMoved=false; if(data.room)fitTo(data.room);};
+$("#resetbg").onclick=()=>{send({cmd:"reset_bg"}); heat.clear();};
+$("#fab").onclick=()=>$("#side").classList.toggle("open");
+$("#export").onclick=()=>{const a=document.createElement("a"); a.download="room_plan.png"; a.href=cv.toDataURL(); a.click();};
+
+// ---------- colors ----------
+function intensColor(i){ // 0..255 -> blue->cyan->green->yellow
+  const t=i/255; const r=Math.round(255*Math.min(1,Math.max(0,t*2-0.4)));
+  const g=Math.round(255*Math.min(1,t*1.6)); const b=Math.round(255*Math.max(0,1-t*1.6));
+  return `rgb(${r},${g},${b})`;
+}
+function heatColor(v){ const t=Math.min(1,v/8);
+  const r=Math.round(255*Math.min(1,t*1.8)); const g=Math.round(120*Math.min(1,Math.max(0,t*1.5-0.3)));
+  const b=Math.round(200*Math.max(0,1-t*2)); return `rgba(${r},${g},${b},${0.14+0.5*t})`; }
+
+// ---------- render ----------
+let sweep=0;
+function draw(){
+  resizeIfNeeded();
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.fillStyle="#070b0f"; ctx.fillRect(0,0,cv.width,cv.height);
+
+  // grid + rings
+  if(L.grid){
+    const [ox,oy]=W2S(0,0);
+    ctx.strokeStyle="#11202a"; ctx.lineWidth=1;
+    for(let r=1;r<=12;r++){ctx.beginPath();ctx.arc(ox,oy,r*view.scale*DPR,0,7);ctx.stroke();}
+    ctx.strokeStyle="#0d1a22"; ctx.beginPath();
+    ctx.moveTo(ox,0);ctx.lineTo(ox,cv.height);ctx.moveTo(0,oy);ctx.lineTo(cv.width,oy);ctx.stroke();
+    ctx.fillStyle="#33505c"; ctx.font=`${11*DPR}px ui-monospace`;
+    for(let r=1;r<=12;r++){const[rx,ry]=W2S(0,r); if(ry>0&&ry<cv.height)ctx.fillText(r+"m",ox+4*DPR,ry-3*DPR);}
+  }
+
+  // heatmap
+  if(L.heatmap){ ctx.save();
+    for(const[k,v]of heat){const[gx,gy]=k.split(",").map(Number);
+      const[sx,sy]=W2S(gx*HCELL,gy*HCELL); const s=HCELL*view.scale*DPR*1.5;
+      ctx.fillStyle=heatColor(v); ctx.fillRect(sx-s/2,sy-s/2,s,s);} ctx.restore(); }
+
+  // wall outline
+  if(L.walls && data.wall.length>2){
+    ctx.strokeStyle="#1f5f6e"; ctx.lineWidth=1.5*DPR; ctx.beginPath();
+    data.wall.forEach((p,i)=>{const[x,y]=W2S(p[0],p[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+    ctx.closePath(); ctx.stroke();
+    ctx.fillStyle="#0c2a3155"; ctx.fill();
+  }
+
+  // raw points
+  if(L.points){ for(const p of data.pts){const[x,y]=W2S(p[0],p[1]);
+    ctx.fillStyle=intensColor(p[2]); ctx.fillRect(x-1.3*DPR,y-1.3*DPR,2.6*DPR,2.6*DPR);} }
+
+  // foreground
+  if(L.fg){ ctx.fillStyle="#f43f5e"; for(const p of data.fg){const[x,y]=W2S(p[0],p[1]);
+    ctx.beginPath();ctx.arc(x,y,2.4*DPR,0,7);ctx.fill();} }
+
+  // zones
+  const anyHit=zones.some(z=>zoneHit(z));
+  zones.forEach(z=>{const hit=zoneHit(z); const[x0,y0]=W2S(z.x0,z.y1),[x1,y1]=W2S(z.x1,z.y0);
+    ctx.fillStyle=hit?"#ef444433":"#22d3ee18"; ctx.strokeStyle=hit?"#ef4444":"#22d3ee";
+    ctx.lineWidth=1.5*DPR; ctx.fillRect(x0,y0,x1-x0,y1-y0); ctx.strokeRect(x0,y0,x1-x0,y1-y0);});
+  if(drawing&&zStart&&zCur){const[x0,y0]=W2S(Math.min(zStart[0],zCur[0]),Math.max(zStart[1],zCur[1]));
+    const[x1,y1]=W2S(Math.max(zStart[0],zCur[0]),Math.min(zStart[1],zCur[1]));
+    ctx.strokeStyle="#22d3ee"; ctx.setLineDash([6,4]); ctx.strokeRect(x0,y0,x1-x0,y1-y0); ctx.setLineDash([]);}
+
+  // tracks
+  for(const o of data.objects){
+    const isP=o.kind==="person"; const col=isP?"#34d399":"#f59e0b";
+    if(L.trails&&o.trail&&o.trail.length>1){ctx.strokeStyle=isP?"#34d39966":"#f59e0b66";
+      ctx.lineWidth=2*DPR; ctx.beginPath();
+      o.trail.forEach((p,i)=>{const[x,y]=W2S(p[0],p[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}); ctx.stroke();}
+    const[x,y]=W2S(o.x,o.y); const rad=Math.max(7*DPR,(o.width*view.scale*DPR)/2);
+    ctx.fillStyle=col+"22"; ctx.beginPath();ctx.arc(x,y,rad,0,7);ctx.fill();
+    ctx.strokeStyle=col; ctx.lineWidth=2*DPR; ctx.beginPath();ctx.arc(x,y,rad,0,7);ctx.stroke();
+    // velocity vector
+    if(o.speed>0.03){ctx.strokeStyle=col; ctx.beginPath();ctx.moveTo(x,y);
+      ctx.lineTo(x+o.vx*view.scale*DPR*6, y-o.vy*view.scale*DPR*6); ctx.stroke();}
+    ctx.fillStyle=col; ctx.font=`${12*DPR}px ui-monospace`;
+      ctx.fillText((isP?"человек":"объект")+" #"+o.id, x+rad+3*DPR, y-2*DPR);
+    ctx.fillStyle="#8aa"; ctx.font=`${10*DPR}px ui-monospace`;
+    ctx.fillText(o.dist.toFixed(2)+"m", x+rad+3*DPR, y+9*DPR);
+  }
+
+  // sweep + lidar
+  const[ox,oy]=W2S(0,0);
+  if(L.sweep){ sweep=(sweep+0.06)%(Math.PI*2);
+    const g=ctx.createConicGradient?null:null;
+    ctx.save();ctx.translate(ox,oy);ctx.rotate(-sweep);
+    const grd=ctx.createLinearGradient(0,0,view.scale*DPR*12,0);
+    grd.addColorStop(0,"#22d3ee44");grd.addColorStop(1,"#22d3ee00");
+    ctx.strokeStyle=grd;ctx.lineWidth=2*DPR;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(view.scale*DPR*12,0);ctx.stroke();
+    ctx.restore(); }
+  ctx.fillStyle="#ef4444"; ctx.beginPath();ctx.arc(ox,oy,5*DPR,0,7);ctx.fill();
+  ctx.strokeStyle="#ef444455";ctx.lineWidth=2*DPR;ctx.beginPath();ctx.arc(ox,oy,9*DPR,0,7);ctx.stroke();
+
+  // alarm
+  const banner=$("#alertbanner");
+  if(anyHit){banner.style.display="block"; beep();
+    ctx.strokeStyle="#ef4444"; ctx.lineWidth=4*DPR; ctx.strokeRect(2,2,cv.width-4,cv.height-4);}
+  else banner.style.display="none";
+
+  requestAnimationFrame(draw);
+}
+let lastW=0,lastH=0;
+function resizeIfNeeded(){const r=cv.parentElement.getBoundingClientRect();
+  if(Math.abs(r.width*DPR-cv.width)>1||Math.abs(r.height*DPR-cv.height)>1)resize();}
+resize(); requestAnimationFrame(draw);
+
+// ---------- HUD / panel update (10Hz) ----------
+setInterval(()=>{
+  // pps
+  const t=performance.now();
+  if(data.frames){
+    if(lastFrames){
+      const dt=(t-lastT)/1000;
+      pps=Math.round(Math.max(0,data.frames-lastFrames)*12/Math.max(dt,0.001));
+    }
+    lastFrames=data.frames; lastT=t;
+  }
+  $("#peopleN").textContent=data.n_people||0;
+  $("#objN").textContent=data.objects.length;
+  $("#debugstat").textContent=`движение ${data.fg_count||0} · кластеров ${data.cluster_count||0}`;
+  updateLidarStatus();
+  $("#rpm").textContent=(data.rpm||0).toFixed(0);
+  $("#pps").textContent=(pps||0);
+  $("#bgstat").className="pill"+(data.bg_ready?" ok":"");
+  $("#bgstat").textContent=data.bg_ready?"фон: готов":"фон: обучение…";
+  if(data.room){$("#rw").textContent=`${data.room.w}×${data.room.l}`; $("#rarea").textContent=data.room.area;}
+  // heatmap accumulate
+  for(const o of data.objects){ if(o.kind==="person") heatAdd(o.x,o.y); }
+  heatDecay();
+  // object list
+  const list=$("#objlist");
+  if(!data.objects.length){list.innerHTML='<div class="muted">движения нет…</div>';}
+  else{ list.innerHTML=data.objects.slice(0,14).map(o=>{
+    const c=o.kind==="person"?"#34d399":"#f59e0b";
+    const kind=o.kind==="person"?"человек":"объект";
+    return `<div class="obj" data-tip="Трек #${o.id}: ${kind}, расстояние ${o.dist.toFixed(2)} м, угол ${o.ang.toFixed(0)}°, скорость ${(o.speed*10).toFixed(1)}."><span class="dot" style="background:${c}"></span>
+      <span class="id">#${o.id}</span> <b>${kind}</b>
+      <span class="meta">${o.dist.toFixed(2)} м · ${o.ang.toFixed(0)}° · ${(o.speed*10).toFixed(1)}
+      ${o.moving?'· <span style="color:#34d399">движется</span>':''}</span></div>`;}).join(""); }
+  updZoneInfo();
+},100);
+</script>
+</body>
+</html>

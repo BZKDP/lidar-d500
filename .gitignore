@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Logs and generated output
+logs/
+output/
+*.log
+
+# Captured scans / recordings
+*.npy
+*.pcd
+*.mp4
+*.wav
+
+# Secrets
+.env
+
+# OS / editor
+.idea/
+.vscode/
+desktop.ini
+Thumbs.db
